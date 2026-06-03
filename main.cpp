@@ -5,8 +5,10 @@
 #include <QUdpSocket>
 #include <QNetworkDatagram>
 #include <QPainter>
+#include <QTimer>
 #include <QPen>
 #include <string>
+#include <cmath>
 
 struct TelemetryData {
     int battery = 0;
@@ -45,6 +47,13 @@ public:
     HudWidget(QWidget *parent = nullptr) : QWidget(parent) {
         // Встановлюємо мінімальний розмір для нашого екрану HUD
         setMinimumSize(300, 200);
+        // Створюємо таймер, який буде працювати в фоні
+        QTimer *timer = new QTimer(this);
+        // З'єднуємо сигнал таймера timeout() з методом update() нашого віджета.
+        // Метод update() каже Qt: "Перемалюй цей віджет при першій можливості" (викликає paintEvent).
+        connect(timer, &QTimer::timeout, this, QOverload<>::of(&QWidget::update));
+        // Запускаємо таймер з інтервалом 30 мілісекунд (приблизно 33 кадри на секунду)
+        timer->start(30);        
     }
 
 protected:
@@ -73,7 +82,18 @@ protected:
         // Вертикальна лінія
         painter.drawLine(centerX, centerY - 60, centerX, centerY + 60);
 
-        painter.drawRect(centerX - 20, centerY - 20, 40, 40);
+        // --- ДИНАМІЧНИЙ ТРЕКІНГ ---
+        // Використовуємо час для створення плавної траєкторії руху.
+        // static_cast<double> потрібен для точних математичних обчислень.
+        static double time = 0.0;
+        time += 0.05; // Швидкість руху
+
+        // Вираховуємо зміщення рамки по синусоїді та косинусоїді (рух по колу)
+        int offsetX = static_cast<int>(30.0 * sin(time));
+        int offsetY = static_cast<int>(20.0 * cos(time));        
+
+        // Малюємо рамку фокусування об'єкта, яка зміщена на offsetX та offsetY
+        painter.drawRect(centerX - 20 + offsetX, centerY - 20 + offsetY, 40, 40);
     }
 };
 

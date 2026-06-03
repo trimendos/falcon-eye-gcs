@@ -56,6 +56,11 @@ public:
         timer->start(30);        
     }
 
+    // Метод для оновлення висоти з головного вікна
+    void setAltitude(int alt) {
+        m_altitude = alt;
+    }    
+
 protected:
     // Цей метод викликається автоматично, коли Qt малює віджет
     void paintEvent(QPaintEvent *event) override {
@@ -65,36 +70,61 @@ protected:
         // Вмикаємо згладжування (Antialiasing), щоб лінії були красивими і не "зубчастими"
         painter.setRenderHint(QPainter::Antialiasing);
 
-        // Отримуємо центр нашого віджета
+        // --- 1. МАЛЮЄМО СІТКУ ЗЕМЛІ (СИМУЛЯЦІЯ КАМЕРИ) ---
+        // Налаштовуємо тонкий напівпрозорий сірий олівець
+        QPen gridPen(QColor(127, 140, 141, 80), 1); 
+        painter.setPen(gridPen);
+
+        static double gridOffset = 0.0;
+        
+        // Вираховуємо швидкість руху землі залежно від висоти
+        double speed = 0.0;
+        if (m_altitude > 0) {
+            // Формула: чим більша висота, тим менша швидкість
+            speed = 150.0 / m_altitude; 
+        }
+        
+        gridOffset += speed;
+        if (gridOffset >= 40.0) {
+            gridOffset = 0.0; // Скидаємо зміщення, коли лінія пройшла один крок сітки (40 пікселів)
+        }
+
+        // Малюємо вертикальні лінії сітки
+        for (int x = 0; x < width(); x += 40) {
+            painter.drawLine(x, 0, x, height());
+        }
+
+        // Малюємо горизонтальні лінії сітки, які зміщуються вниз на gridOffset
+        for (int y = static_cast<int>(gridOffset); y < height(); y += 40) {
+            painter.drawLine(0, y, width(), y);
+        }
+
+        // --- 2. МАЛЮЄМО ВІЗИР ТА РАМКУ ФОКУСУВАННЯ ---
         int centerX = width() / 2;
         int centerY = height() / 2;
 
-        // Налаштовуємо "олівець" (колір Flat UI Emerald, товщина 2 пікселі)
         QPen pen(QColor(46, 204, 113), 2); 
         painter.setPen(pen);
 
-        // 1. Малюємо центральне коло візиру (радіус 40 пікселів)
+        // Малюємо центральне коло візира
         painter.drawEllipse(QPoint(centerX, centerY), 40, 40);
 
-        // 2. Малюємо лінії перехрестя
-        // Горизонтальна лінія (від -60 до +60 пікселів від центру)
+        // Малюємо лінії перехрестя
         painter.drawLine(centerX - 60, centerY, centerX + 60, centerY);
-        // Вертикальна лінія
         painter.drawLine(centerX, centerY - 60, centerX, centerY + 60);
 
-        // --- ДИНАМІЧНИЙ ТРЕКІНГ ---
-        // Використовуємо час для створення плавної траєкторії руху.
-        // static_cast<double> потрібен для точних математичних обчислень.
+        // Динамічний трекінг
         static double time = 0.0;
-        time += 0.05; // Швидкість руху
+        time += 0.05;
 
-        // Вираховуємо зміщення рамки по синусоїді та косинусоїді (рух по колу)
         int offsetX = static_cast<int>(30.0 * sin(time));
-        int offsetY = static_cast<int>(20.0 * cos(time));        
+        int offsetY = static_cast<int>(20.0 * cos(time));
 
-        // Малюємо рамку фокусування об'єкта, яка зміщена на offsetX та offsetY
         painter.drawRect(centerX - 20 + offsetX, centerY - 20 + offsetY, 40, 40);
     }
+
+private:
+    int m_altitude = 100; // Висота за замовчуванням
 };
 
 // Створюємо наш власний клас вікна
@@ -157,6 +187,9 @@ private slots:
                 batteryLabel->setText("Battery: " + QString::number(t.battery) + " %");
                 altitudeLabel->setText("Altitude: " + QString::number(t.altitude) + " meters");
                 statusLabel->setText("Status: Connected");
+
+                // Передаємо нову висоту в наш HUD-віджет
+                hudWidget->setAltitude(t.altitude);                
             } else {
                 statusLabel->setText("Status: [WARNING] Signal interference!");
             }

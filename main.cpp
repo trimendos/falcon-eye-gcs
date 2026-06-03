@@ -1,3 +1,4 @@
+// main.cpp
 #include <QApplication>
 #include <QWidget>
 #include <QLabel>
@@ -13,27 +14,61 @@
 struct TelemetryData {
     int battery = 0;
     int altitude = 0;
+    int roll = 0;
+    int pitch = 0;    
     bool is_valid = false;
 };
+
+// Допоміжна функція для безпечного витягування цілого числа за ключем.
+// Параметр 'ok' передається по посиланню (bool&), щоб ми могли повернути статус успіху.
+int extractValue(const std::string& data, const std::string& key, bool& ok) {
+    size_t key_pos = data.find(key);
+    if (key_pos == std::string::npos) {
+        ok = false;
+        return 0;
+    }
+
+    size_t semi_pos = data.find(";", key_pos);
+    // Якщо крапку з комою не знайдено, ми беремо кінець рядка як роздільник!
+    if (semi_pos == std::string::npos) {
+        semi_pos = data.length(); 
+    }
+
+    size_t key_len = key.length();
+    // Вирізаємо підрядок між ключем і крапкою з комою
+    std::string val_str = data.substr(key_pos + key_len, semi_pos - (key_pos + key_len));
+
+    // Безпечно конвертуємо в число. 
+    // try-catch захистить нас, якщо замість числа прилетить сміття (наприклад, "BAT:abc;")
+    try {
+        ok = true;
+        return std::stoi(val_str);
+    } catch (...) {
+        ok = false;
+        return 0;
+    }
+}
 
 // Наш перевірений безпечний парсер
 TelemetryData parseTelemetrySafe(const std::string& data) {
     TelemetryData result;
-    size_t bat_pos = data.find("BAT:");
-    size_t alt_pos = data.find("ALT:");
+    bool ok = true;
 
-    if (bat_pos == std::string::npos || alt_pos == std::string::npos) {
-        result.is_valid = false;
-        return result;
-    }
+    // Витягуємо батарею
+    result.battery = extractValue(data, "BAT:", ok);
+    if (!ok) { result.is_valid = false; return result; }
 
-    size_t semi_pos1 = data.find(";", bat_pos);
-    std::string bat_str = data.substr(bat_pos + 4, semi_pos1 - (bat_pos + 4));
-    result.battery = std::stoi(bat_str);
+    // Витягуємо висоту
+    result.altitude = extractValue(data, "ALT:", ok);
+    if (!ok) { result.is_valid = false; return result; }
 
-    size_t semi_pos2 = data.find(";", alt_pos);
-    std::string alt_str = data.substr(alt_pos + 4, semi_pos2 - (alt_pos + 4));
-    result.altitude = std::stoi(alt_str);
+    // Витягуємо крен (Roll)
+    result.roll = extractValue(data, "ROLL:", ok);
+    if (!ok) { result.is_valid = false; return result; }
+
+    // Витягуємо тангаж (Pitch)
+    result.pitch = extractValue(data, "PITCH:", ok);
+    if (!ok) { result.is_valid = false; return result; }
 
     result.is_valid = true;
     return result;
@@ -59,50 +94,78 @@ public:
     // Метод для оновлення висоти з головного вікна
     void setAltitude(int alt) {
         m_altitude = alt;
+    }
+
+    void setAttitude(int roll, int pitch) {
+        m_roll = roll;
+        m_pitch = pitch;
     }    
 
 protected:
     // Цей метод викликається автоматично, коли Qt малює віджет
     void paintEvent(QPaintEvent *event) override {
-        Q_UNUSED(event); // Кажемо компілятору, що ми не використовуємо змінну event
+        Q_UNUSED(event);
 
         QPainter painter(this);
-        // Вмикаємо згладжування (Antialiasing), щоб лінії були красивими і не "зубчастими"
         painter.setRenderHint(QPainter::Antialiasing);
 
         // --- 1. МАЛЮЄМО СІТКУ ЗЕМЛІ (СИМУЛЯЦІЯ КАМЕРИ) ---
-        // Налаштовуємо тонкий напівпрозорий сірий олівець
         QPen gridPen(QColor(127, 140, 141, 80), 1); 
         painter.setPen(gridPen);
 
         static double gridOffset = 0.0;
-        
-        // Вираховуємо швидкість руху землі залежно від висоти
         double speed = 0.0;
         if (m_altitude > 0) {
-            // Формула: чим більша висота, тим менша швидкість
             speed = 150.0 / m_altitude; 
         }
         
         gridOffset += speed;
         if (gridOffset >= 40.0) {
-            gridOffset = 0.0; // Скидаємо зміщення, коли лінія пройшла один крок сітки (40 пікселів)
+            gridOffset = 0.0;
         }
 
-        // Малюємо вертикальні лінії сітки
         for (int x = 0; x < width(); x += 40) {
             painter.drawLine(x, 0, x, height());
         }
-
-        // Малюємо горизонтальні лінії сітки, які зміщуються вниз на gridOffset
         for (int y = static_cast<int>(gridOffset); y < height(); y += 40) {
             painter.drawLine(0, y, width(), y);
         }
 
-        // --- 2. МАЛЮЄМО ВІЗИР ТА РАМКУ ФОКУСУВАННЯ ---
         int centerX = width() / 2;
         int centerY = height() / 2;
 
+
+        // --- 2. МАЛЮЄМО ШТУЧНИЙ ГОРИЗОНТ (Attitude Indicator) ---
+        // Зберігаємо поточний стан художника (координати за замовчуванням)
+        painter.save();
+
+        // Налаштовуємо синій олівець для лінії горизонту
+        QPen horizonPen(QColor(41, 128, 185), 2); 
+        painter.setPen(horizonPen);
+
+        // Переносимо центр координат у центр нашого віджета
+        painter.translate(centerX, centerY);
+        
+        // Зміщуємо по вертикалі залежно від тангажу (Pitch).
+        // Множимо на 3, щоб рух був більш помітним на екрані.
+        painter.translate(0, m_pitch * 3);
+
+        // Повертаємо систему координат на кут крен (Roll)
+        painter.rotate(m_roll);
+
+        // Малюємо лінію горизонту (від -100 до +100 пікселів відносно нового центру)
+        painter.drawLine(-100, 0, 100, 0);
+        
+        // Малюємо маленькі засічки на лінії горизонту (шкала нахилу)
+        painter.drawLine(-50, -10, -50, 10);
+        painter.drawLine(50, -10, 50, 10);
+
+        // Відновлюємо стан художника (повертаємо координати на місце)
+        painter.restore();
+
+
+        // --- 3. МАЛЮЄМО СТАТИЧНИЙ ВІЗИР (ПРИЦІЛ) ---
+        // Він залишається по центру і НЕ крутиться, бо ми зробили painter.restore()!
         QPen pen(QColor(46, 204, 113), 2); 
         painter.setPen(pen);
 
@@ -113,18 +176,20 @@ protected:
         painter.drawLine(centerX - 60, centerY, centerX + 60, centerY);
         painter.drawLine(centerX, centerY - 60, centerX, centerY + 60);
 
-        // Динамічний трекінг
-        static double time = 0.0;
-        time += 0.05;
 
-        int offsetX = static_cast<int>(30.0 * sin(time));
-        int offsetY = static_cast<int>(20.0 * cos(time));
+        // --- 4. ДИНАМІЧНИЙ ТРЕКІНГ (РАМКА ФОКУСУВАННЯ) ---
+        // Замість синуса, давай прив'яжемо рух рамки до реальних нахилів дрона!
+        // Це покаже, як рамка реально зміщується при маневрах.
+        int offsetX = m_roll * 2;
+        int offsetY = m_pitch * 2;
 
         painter.drawRect(centerX - 20 + offsetX, centerY - 20 + offsetY, 40, 40);
     }
 
 private:
     int m_altitude = 100; // Висота за замовчуванням
+    int m_roll = 0;
+    int m_pitch = 0;    
 };
 
 // Створюємо наш власний клас вікна
@@ -189,7 +254,8 @@ private slots:
                 statusLabel->setText("Status: Connected");
 
                 // Передаємо нову висоту в наш HUD-віджет
-                hudWidget->setAltitude(t.altitude);                
+                hudWidget->setAltitude(t.altitude);
+                hudWidget->setAttitude(t.roll, t.pitch); 
             } else {
                 statusLabel->setText("Status: [WARNING] Signal interference!");
             }

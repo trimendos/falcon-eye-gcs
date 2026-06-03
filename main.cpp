@@ -4,6 +4,8 @@
 #include <QVBoxLayout>
 #include <QUdpSocket>
 #include <QNetworkDatagram>
+#include <QPainter>
+#include <QPen>
 #include <string>
 
 struct TelemetryData {
@@ -35,6 +37,46 @@ TelemetryData parseTelemetrySafe(const std::string& data) {
     return result;
 }
 
+
+// Клас, який відповідає за малювання прицілу
+class HudWidget : public QWidget {
+    Q_OBJECT
+public:
+    HudWidget(QWidget *parent = nullptr) : QWidget(parent) {
+        // Встановлюємо мінімальний розмір для нашого екрану HUD
+        setMinimumSize(300, 200);
+    }
+
+protected:
+    // Цей метод викликається автоматично, коли Qt малює віджет
+    void paintEvent(QPaintEvent *event) override {
+        Q_UNUSED(event); // Кажемо компілятору, що ми не використовуємо змінну event
+
+        QPainter painter(this);
+        // Вмикаємо згладжування (Antialiasing), щоб лінії були красивими і не "зубчастими"
+        painter.setRenderHint(QPainter::Antialiasing);
+
+        // Отримуємо центр нашого віджета
+        int centerX = width() / 2;
+        int centerY = height() / 2;
+
+        // Налаштовуємо "олівець" (колір Flat UI Emerald, товщина 2 пікселі)
+        QPen pen(QColor(46, 204, 113), 2); 
+        painter.setPen(pen);
+
+        // 1. Малюємо центральне коло візиру (радіус 40 пікселів)
+        painter.drawEllipse(QPoint(centerX, centerY), 40, 40);
+
+        // 2. Малюємо лінії перехрестя
+        // Горизонтальна лінія (від -60 до +60 пікселів від центру)
+        painter.drawLine(centerX - 60, centerY, centerX + 60, centerY);
+        // Вертикальна лінія
+        painter.drawLine(centerX, centerY - 60, centerX, centerY + 60);
+
+        painter.drawRect(centerX - 20, centerY - 20, 40, 40);
+    }
+};
+
 // Створюємо наш власний клас вікна
 class MainWindow : public QWidget {
     Q_OBJECT // Обов'язковий макрос Qt для роботи сигналів/слотів
@@ -58,9 +100,13 @@ public:
         statusLabel = new QLabel("Status: Waiting for drone...", this);
         statusLabel->setStyleSheet("font-size: 12px; color: #7f8c8d;");
 
+        // Створюємо наш приціл
+        hudWidget = new HudWidget(this);
+
         // Розміщуємо їх у вікні вертикально
         QVBoxLayout *layout = new QVBoxLayout(this);
         layout->addWidget(titleLabel);
+        layout->addWidget(hudWidget);
         layout->addWidget(batteryLabel);
         layout->addWidget(altitudeLabel);
         layout->addWidget(statusLabel);
@@ -92,7 +138,7 @@ private slots:
                 altitudeLabel->setText("Altitude: " + QString::number(t.altitude) + " meters");
                 statusLabel->setText("Status: Connected");
             } else {
-                statusLabel->setText("Status: [WARNING] Jamming detected!");
+                statusLabel->setText("Status: [WARNING] Signal interference!");
             }
         }
     }
@@ -103,6 +149,7 @@ private:
     QLabel *altitudeLabel;
     QLabel *statusLabel;
     QUdpSocket *udpSocket;
+    HudWidget *hudWidget;
 };
 
 int main(int argc, char *argv[]) {

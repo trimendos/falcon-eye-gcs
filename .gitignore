@@ -1,0 +1,8 @@
+build/
+.devcontainer/bash_history
+
+
+test_speed
+test_speed_no_opt
+test_speed_rust
+test_speed_rust_opt

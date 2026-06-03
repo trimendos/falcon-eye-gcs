@@ -1,0 +1,23 @@
+// .devcontainer/devcontainer.json
+{
+	"name": "C++ MilTech Dev",
+	"image": "mcr.microsoft.com/devcontainers/cpp:ubuntu-22.04",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-vscode.cpptools",
+				"twxs.cmake",
+				"ms-vscode.cmake-tools",
+				"matepek.vscode-catch2-test-adapter"
+			]
+		}
+	},
+
+	"mounts": [
+		"source=${localWorkspaceFolder}/.devcontainer/bash_history,target=/home/vscode/.bash_history,type=bind,consistency=cached"
+	],
+	// "postCreateCommand": "sudo apt-get update && sudo apt-get install -y tcpdump net-tools iputils-ping libboost-all-dev && echo 'export HISTFILE=/home/vscode/.bash_history' >> ~/.bashrc && echo 'export PROMPT_COMMAND=\"history -a; $PROMPT_COMMAND\"' >> ~/.bashrc"
+	// "postCreateCommand": "sudo apt-get update && sudo apt-get install -y tcpdump net-tools iputils-ping libboost-all-dev netcat-openbsd && sudo chown -R vscode:vscode /commandhistory && echo 'export PROMPT_COMMAND=\"history -a\"' >> ~/.bashrc && echo 'export HISTFILE=/commandhistory/.bash_history' >> ~/.bashrc"
+	// "postCreateCommand": "sudo apt-get update && sudo apt-get install -y tcpdump net-tools iputils-ping libboost-all-dev netcat-openbsd && echo 'export PROMPT_COMMAND=\"history -a; $PROMPT_COMMAND\"' >> ~/.bashrc"
+	"postCreateCommand": "sudo apt-get update && sudo apt-get install -y tcpdump net-tools iputils-ping libboost-all-dev netcat-openbsd qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && echo 'export PROMPT_COMMAND=\"history -a; $PROMPT_COMMAND\"' >> ~/.bashrc && echo 'source \"$HOME/.cargo/env\"' >> ~/.bashrc"
+}
